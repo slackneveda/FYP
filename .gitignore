@@ -1,0 +1,56 @@
+# Python Virtual Environment
+myenv/
+venv/
+env/
+ENV/
+.venv
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Django
+*.log
+db.sqlite3
+db.sqlite3-journal
+media/
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# ChromaDB
+chroma_db/
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Project specific
+*.pdf
+*.whl
+
+# Node modules (if any in root)
+node_modules/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.cache
