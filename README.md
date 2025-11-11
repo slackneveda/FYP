@@ -4,6 +4,24 @@ A full-stack e-commerce platform for ordering premium desserts online, featuring
 
 ---
 
+## 🚀 Quick Start
+
+**First time setting up?** See [SETUP.md](./SETUP.md) for step-by-step instructions.
+
+```powershell
+# 1. Clone and setup environment
+git clone https://github.com/slackneveda/FYP.git
+cd FYP
+.\setup_env.ps1
+
+# 2. Edit .env files with your API keys (see SETUP.md)
+# 3. Run the application
+.\start_backend.ps1  # Terminal 1
+cd frontend\sweet-dessert && npm run dev  # Terminal 2
+```
+
+---
+
 ## Table of Contents
 
 - [Overview](#overview)
