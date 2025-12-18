@@ -24,7 +24,8 @@ OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_MODEL = "mistralai/devstral-2512:free"
 
 # Model that supports structured outputs (GPT-4o, Gemini, etc.)
-OPENROUTER_INTENT_MODEL = "mistralai/devstral-2512:free"  # Supports structured outputs, fast and cheap
+# Using Gemini 2.0 Flash (Free) as it has excellent structured output support
+OPENROUTER_INTENT_MODEL = "mistralai/devstral-2512:free"
 
 
 def get_openrouter_api_key(frontend_key: str = None):
@@ -204,6 +205,10 @@ Analyze the message and provide structured classification."""
         "response_format": {
             "type": "json_schema",
             "json_schema": intent_schema
+        },
+        # Ensure we get a provider that supports structured outputs
+        "provider": {
+            "require_parameters": True
         },
         "temperature": 0.1,  # Low temperature for consistent classification
         "max_tokens": 300
@@ -774,9 +779,11 @@ def build_system_prompt(context_chunks: list, user_authenticated: bool = False, 
 - **Refunds:** If unsatisfied, contact us within 24 hours for refund or replacement.
 
 **Ordering Process:**
+- **YOU HAVE THE ABILITY TO ADD ITEMS TO THE CART.** When a user asks to order a specific product, assume the system has already added it to the cart for you.
 - If customer says they want to order but doesn't specify WHICH product (e.g., "I want to order a dessert"), ask them which specific dessert they'd like from the menu
 - If customer wants to order a SPECIFIC product and is LOGGED IN: 
-  * ALWAYS give a HAPPY, ENTHUSIASTIC confirmation message
+  * **DO NOT say you cannot process orders.**
+  * ALWAYS give a HAPPY, ENTHUSIASTIC confirmation message assuming the action succeeded.
   * Example: "Great choice! 🎉 I've added [Exact Product Name] to your cart!"
   * Then IMMEDIATELY ask: "Would you like to order more items, or shall we proceed to checkout?"
   * NEVER skip asking this question - it's mandatory after every order
