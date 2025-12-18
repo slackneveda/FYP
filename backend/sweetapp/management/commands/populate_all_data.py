@@ -287,30 +287,44 @@ class Command(BaseCommand):
         self.stdout.write('Creating chef recommendations...')
         chef_recommendations_data = [
             {
+                'chef_name': 'Chef Maria Santos',
+                'chef_title': 'Head Pastry Chef',
                 'dessert_item': dessert_objects[0],  # Chocolate Lava Cake
-                'reason': 'This is my personal favorite - the perfect balance of rich chocolate and warm, gooey center makes it irresistible.',
+                'recommendation_text': 'This is my personal favorite - the perfect balance of rich chocolate and warm, gooey center makes it irresistible.',
+                'is_featured': True,
                 'active': True
             },
             {
+                'chef_name': 'Chef Pierre Dubois',
+                'chef_title': 'Executive Chef',
                 'dessert_item': dessert_objects[2],  # Macarons
-                'reason': 'These macarons showcase the perfect technique - crispy shells with chewy centers and intense flavors.',
+                'recommendation_text': 'These macarons showcase the perfect technique - crispy shells with chewy centers and intense flavors.',
+                'is_featured': True,
                 'active': True
             },
             {
+                'chef_name': 'Chef Aisha Patel',
+                'chef_title': 'Vegan Specialist',
                 'dessert_item': dessert_objects[5],  # Vegan Chocolate Mousse
-                'reason': 'A testament to how amazing plant-based desserts can be. Rich, silky, and completely satisfying.',
+                'recommendation_text': 'A testament to how amazing plant-based desserts can be. Rich, silky, and completely satisfying.',
+                'is_featured': True,
                 'active': True
             },
             {
+                'chef_name': 'Chef James Cooper',
+                'chef_title': 'Cupcake Artisan',
                 'dessert_item': dessert_objects[8],  # Red Velvet Cupcake
-                'reason': 'The classic done right - moist cake with the perfect tang from cream cheese frosting.',
-                'active': False
+                'recommendation_text': 'The classic done right - moist cake with the perfect tang from cream cheese frosting.',
+                'is_featured': False,
+                'active': True
             }
         ]
 
         for chef_rec_data in chef_recommendations_data:
+            dessert = chef_rec_data.pop('dessert_item')
             chef_rec, created = ChefRecommendation.objects.get_or_create(
-                dessert_item=chef_rec_data['dessert_item'],
+                dessert_item=dessert,
+                chef_name=chef_rec_data['chef_name'],
                 defaults=chef_rec_data
             )
             if created:

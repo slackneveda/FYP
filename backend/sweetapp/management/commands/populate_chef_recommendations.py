@@ -27,33 +27,52 @@ class Command(BaseCommand):
         else:
             selected_desserts = featured_desserts
         
-        # Chef recommendation reasons
-        reasons = [
-            "Our head pastry chef's personal favorite - the perfect balance of flavors and textures makes this absolutely irresistible.",
-            "This signature creation showcases our finest ingredients and traditional techniques, resulting in pure perfection.",
-            "A masterpiece that combines innovation with classic techniques - every bite tells a story of culinary excellence.",
-            "Made with premium imported ingredients and our secret family recipe, this dessert represents the best of our craft.",
-            "The delicate preparation and attention to detail in this dessert makes it a true work of art.",
-            "Using traditional methods passed down through generations, this dessert embodies authentic flavors.",
-            "The perfect harmony of taste and presentation - this dessert never fails to impress our most discerning customers.",
-            "Crafted with seasonal ingredients at their peak, this dessert captures the essence of fine pastry making."
+        # Chef data with names, titles, and recommendations
+        chef_recommendations_data = [
+            {
+                'chef_name': 'Chef Marcus Rivera',
+                'chef_title': 'Executive Pastry Chef',
+                'recommendation_text': "Our head pastry chef's personal favorite - the perfect balance of flavors and textures makes this absolutely irresistible.",
+                'is_featured': True
+            },
+            {
+                'chef_name': 'Chef Sofia Laurent',
+                'chef_title': 'Head Chocolatier',
+                'recommendation_text': "This signature creation showcases our finest ingredients and traditional techniques, resulting in pure perfection.",
+                'is_featured': True
+            },
+            {
+                'chef_name': 'Chef Amir Hassan',
+                'chef_title': 'Senior Pastry Artist',
+                'recommendation_text': "A masterpiece that combines innovation with classic techniques - every bite tells a story of culinary excellence.",
+                'is_featured': False
+            },
+            {
+                'chef_name': 'Chef Emma Chen',
+                'chef_title': 'Dessert Specialist',
+                'recommendation_text': "Made with premium imported ingredients and our secret family recipe, this dessert represents the best of our craft.",
+                'is_featured': False
+            },
         ]
         
         created_count = 0
-        for dessert in selected_desserts:
-            reason = random.choice(reasons)
+        for i, dessert in enumerate(selected_desserts):
+            chef_data = chef_recommendations_data[i % len(chef_recommendations_data)]
             
             chef_rec, created = ChefRecommendation.objects.get_or_create(
                 dessert_item=dessert,
                 defaults={
-                    'reason': reason,
+                    'chef_name': chef_data['chef_name'],
+                    'chef_title': chef_data['chef_title'],
+                    'recommendation_text': chef_data['recommendation_text'],
+                    'is_featured': chef_data['is_featured'],
                     'active': True
                 }
             )
             
             if created:
                 created_count += 1
-                self.stdout.write(f'✅ Created chef recommendation: {dessert.name}')
+                self.stdout.write(f'✅ Created chef recommendation: {chef_data["chef_name"]} recommends {dessert.name}')
             else:
                 self.stdout.write(f'⚠️  Chef recommendation already exists: {dessert.name}')
         

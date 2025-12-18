@@ -1,11 +1,29 @@
 # Setup and run Django backend for Sweet Dessert app
 
+# Get the script's directory (project root)
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$BackendDir = Join-Path $ScriptDir "backend"
+$VenvDir = Join-Path $ScriptDir "myenv"
+
 # Navigate to backend directory
-Set-Location "D:\UNI\FYP\PROJECT\backend"
+Write-Host "Navigating to backend directory: $BackendDir" -ForegroundColor Cyan
+Set-Location $BackendDir
+
+# Check if virtual environment exists, create if not
+if (-Not (Test-Path $VenvDir)) {
+    Write-Host "Creating virtual environment..." -ForegroundColor Yellow
+    python -m venv $VenvDir
+}
 
 # Activate virtual environment
 Write-Host "Activating virtual environment..." -ForegroundColor Green
-& "D:\UNI\FYP\PROJECT\myenv\Scripts\Activate.ps1"
+$ActivateScript = Join-Path $VenvDir "Scripts\Activate.ps1"
+if (Test-Path $ActivateScript) {
+    & $ActivateScript
+} else {
+    Write-Host "Warning: Virtual environment activation script not found at $ActivateScript" -ForegroundColor Yellow
+    Write-Host "Continuing without virtual environment..." -ForegroundColor Yellow
+}
 
 # Install required packages
 Write-Host "Installing required packages..." -ForegroundColor Green

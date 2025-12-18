@@ -1375,7 +1375,8 @@ class ComprehensivePDFGenerator:
 
 # Main execution
 if __name__ == "__main__":
-    project_root = r"D:\UNI\FYP\PROJECT"
+    # Use the directory where this script is located as project root
+    project_root = os.path.dirname(os.path.abspath(__file__))
     output_file = "sweet_dessert_updated_descriptions_training_data.pdf"
     
     print("🍰 Starting Sweet Dessert Training Dataset Generation...")
