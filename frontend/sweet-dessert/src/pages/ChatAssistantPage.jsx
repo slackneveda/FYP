@@ -80,7 +80,7 @@ const ChatAssistantPage = () => {
     if (!isUserScrolledUp) {
       scrollToBottom()
     }
-  }, [messages, isTyping, isUserScrolledUp])
+  }, [isTyping, isUserScrolledUp])
 
   useEffect(() => {
     // Fetch chat stats on mount
@@ -160,6 +160,7 @@ const ChatAssistantPage = () => {
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let accumulatedContent = ""
+      let buffer = ""
 
       while (true) {
         const {done, value} = await reader.read()
@@ -177,8 +178,11 @@ const ChatAssistantPage = () => {
           break
         }
 
-        const chunk = decoder.decode(value, {stream: true})
-        const lines = chunk.split("\n")
+        buffer += decoder.decode(value, {stream: true})
+        const lines = buffer.split("\n")
+
+        // Keep the last line in the buffer if it's incomplete
+        buffer = lines.pop() || ""
 
         for (const line of lines) {
           if (line.startsWith("data: ")) {
@@ -296,7 +300,7 @@ const ChatAssistantPage = () => {
                       name: product.name,
                       price: parseFloat(product.price) || 0,
                       image: product.image || "/placeholder.jpg", // Use actual product image
-                      quantity: 1,
+                      quantity: product.quantity || 1,
                       category: product.category || "Dessert",
                     })
                   })
