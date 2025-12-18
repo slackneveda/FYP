@@ -75,12 +75,14 @@ const ChatAssistantPage = () => {
     setIsUserScrolledUp(!isAtBottom)
   }
 
-  // Only auto-scroll if user is already at the bottom
+  // Auto-scroll removed as per user request
+  /*
   useEffect(() => {
     if (!isUserScrolledUp) {
       scrollToBottom()
     }
-  }, [isTyping, isUserScrolledUp])
+  }, [messages.length, isTyping])
+  */
 
   useEffect(() => {
     // Fetch chat stats on mount
@@ -520,14 +522,14 @@ const ChatAssistantPage = () => {
           <div
             ref={messagesContainerRef}
             onScroll={handleScroll}
-            className="h-[400px] sm:h-[500px] md:h-[550px] overflow-y-auto p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4 bg-gradient-to-b from-background/50 to-background"
+            className="h-[500px] sm:h-[600px] overflow-y-auto p-4 sm:p-6 space-y-6 bg-background"
           >
             {messages.map(message => (
               <div
                 key={message.id}
                 className={`flex ${
                   message.type === "user" ? "justify-end" : "justify-start"
-                } animate-slide-up`}
+                } animate-fade-in`}
               >
                 {message.type === "product_list" ? (
                   // Product List Display
@@ -572,17 +574,17 @@ const ChatAssistantPage = () => {
                 ) : (
                   // Regular Message Display
                   <div
-                    className={`max-w-[85%] sm:max-w-[80%] rounded-2xl px-5 py-4 ${
+                    className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-6 py-4 shadow-sm ${
                       message.type === "user"
                         ? "bg-primary text-primary-foreground ml-auto rounded-br-sm"
-                        : "bg-muted/50 text-foreground border border-border/50 rounded-bl-sm"
+                        : "bg-card border border-border/60 rounded-bl-sm"
                     } group relative`}
                   >
                     <div
                       className={`text-sm sm:text-base leading-relaxed ${
                         message.type === "user"
                           ? "[&_p]:text-primary-foreground [&_strong]:text-primary-foreground [&_li]:text-primary-foreground [&_a]:text-primary-foreground [&_a]:underline"
-                          : "prose prose-sm dark:prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-background prose-pre:border prose-pre:border-border prose-headings:text-foreground prose-a:text-primary prose-strong:text-foreground"
+                          : "prose prose-neutral dark:prose-invert max-w-none prose-p:leading-7 prose-headings:font-semibold prose-a:text-primary prose-a:no-underline hover:prose-a:underline"
                       }`}
                     >
                       <ReactMarkdown
@@ -689,12 +691,12 @@ const ChatAssistantPage = () => {
 
             {/* Typing Indicator */}
             {isTyping && !messages.some(m => m.isStreaming) && (
-              <div className="flex justify-start animate-slide-up">
-                <div className="bg-muted rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 border border-border">
-                  <div className="flex gap-1">
-                    <div className="w-2 h-2 rounded-full bg-primary animate-bounce"></div>
-                    <div className="w-2 h-2 rounded-full bg-primary animate-bounce delay-100"></div>
-                    <div className="w-2 h-2 rounded-full bg-primary animate-bounce delay-200"></div>
+              <div className="flex justify-start animate-fade-in">
+                <div className="bg-card border border-border/60 rounded-2xl rounded-bl-sm px-4 py-3 shadow-sm">
+                  <div className="flex gap-1.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-bounce"></div>
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-bounce delay-100"></div>
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-bounce delay-200"></div>
                   </div>
                 </div>
               </div>
@@ -742,20 +744,20 @@ const ChatAssistantPage = () => {
           )}
 
           {/* Input Area */}
-          <div className="p-4 border-t border-border bg-card">
-            <div className="flex gap-3">
+          <div className="p-4 sm:p-6 border-t border-border bg-card/50 backdrop-blur-sm">
+            <div className="flex gap-3 relative">
               <Input
                 value={inputMessage}
                 onChange={e => setInputMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder="Type your message..."
                 disabled={isTyping}
-                className="flex-1 rounded-lg border-input bg-background focus-visible:ring-1 focus-visible:ring-primary"
+                className="flex-1 h-12 px-4 rounded-xl border-input bg-background shadow-sm focus-visible:ring-2 focus-visible:ring-primary/20 transition-all"
               />
               <Button
                 onClick={handleSendMessage}
                 disabled={!inputMessage.trim() || isTyping}
-                className="rounded-lg px-6 bg-primary text-primary-foreground hover:bg-primary/90 shadow-none"
+                className="h-12 px-6 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
               >
                 {isTyping ? (
                   <Loader2 className="w-4 h-4 sm:w-4 sm:h-4 sm:mr-2 animate-spin" />
