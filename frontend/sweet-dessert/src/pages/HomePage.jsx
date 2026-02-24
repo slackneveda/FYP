@@ -241,7 +241,7 @@ const HomePage = () => {
               initial="hidden"
               animate="visible"
               variants={fadeUpVariants}
-              className="mb-6 text-5xl font-extrabold tracking-tight text-white sm:text-7xl lg:text-8xl"
+              className="mb-6 text-5xl font-display font-extrabold tracking-tight text-white sm:text-7xl lg:text-8xl"
             >
               Sweet Dreams <br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-orange-300 to-amber-200">
