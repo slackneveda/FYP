@@ -52,7 +52,7 @@ const ChatAssistantPage = () => {
   const messagesContainerRef = useRef(null)
   const eventSourceRef = useRef(null)
   const {addItem} = useCart()
-  const {isAuthenticated} = useAuth() // eslint-disable-line no-unused-vars
+  const {user} = useAuth() // eslint-disable-line no-unused-vars
   const navigate = useNavigate()
 
   // Save API key to localStorage when it changes

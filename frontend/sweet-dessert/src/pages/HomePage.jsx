@@ -485,7 +485,7 @@ const HomePage = () => {
                   viewport={{ once: true }}
                   transition={{ delay: i * 0.1, duration: 0.4 }}
                 >
-                  <TestimonialCard testimonial={testimonial} />
+                  <TestimonialCard testimonial={testimonial} index={i} />
                 </motion.div>
               ))}
             </div>
