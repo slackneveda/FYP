@@ -27,17 +27,33 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 
 const API_BASE_URL = "http://localhost:8000/api"
+const CHAT_STORAGE_KEY = "sweet-dessert-chat-history"
+const DEFAULT_WELCOME_MESSAGE = {
+  id: 1,
+  type: "assistant",
+  content:
+    "👋 Hello! I'm your Sweet Dessert assistant. I can help you with information about our menu, orders, delivery options, ingredients, and anything else related to our desserts. How can I help you today?",
+  timestamp: new Date(),
+}
+
+const loadPersistedMessages = () => {
+  try {
+    const raw = localStorage.getItem(CHAT_STORAGE_KEY)
+    if (!raw) return [DEFAULT_WELCOME_MESSAGE]
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed) || !parsed.length) return [DEFAULT_WELCOME_MESSAGE]
+    return parsed.map(msg => ({
+      ...msg,
+      timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+      isStreaming: false,
+    }))
+  } catch {
+    return [DEFAULT_WELCOME_MESSAGE]
+  }
+}
 
 const ChatAssistantPage = () => {
-  const [messages, setMessages] = useState([
-    {
-      id: 1,
-      type: "assistant",
-      content:
-        "👋 Hello! I'm your Sweet Dessert assistant. I can help you with information about our menu, orders, delivery options, ingredients, and anything else related to our desserts. How can I help you today?",
-      timestamp: new Date(),
-    },
-  ])
+  const [messages, setMessages] = useState(() => loadPersistedMessages())
   const [inputMessage, setInputMessage] = useState("")
   const [isTyping, setIsTyping] = useState(false)
   const [copiedId, setCopiedId] = useState(null)
@@ -46,6 +62,9 @@ const ChatAssistantPage = () => {
   const [apiKey, setApiKey] = useState(() => {
     // Load API key from localStorage if available
     return localStorage.getItem("openrouter_api_key") || ""
+  })
+  const [apiProvider, setApiProvider] = useState(() => {
+    return localStorage.getItem("chat_api_provider") || "openrouter"
   })
   const [showApiKeyInput, setShowApiKeyInput] = useState(false)
   const messagesEndRef = useRef(null)
@@ -59,6 +78,11 @@ const ChatAssistantPage = () => {
   const handleApiKeyChange = value => {
     setApiKey(value)
     localStorage.setItem("openrouter_api_key", value)
+  }
+
+  const handleApiProviderChange = provider => {
+    setApiProvider(provider)
+    localStorage.setItem("chat_api_provider", provider)
   }
 
   const scrollToBottom = () => {
@@ -99,6 +123,28 @@ const ChatAssistantPage = () => {
     }
   }, [])
 
+  // Persist chat history across page refreshes
+  useEffect(() => {
+    try {
+      const serializableMessages = messages
+        .filter(msg => !msg.isStreaming)
+        .slice(-60)
+        .map(msg => ({
+          ...msg,
+          timestamp:
+            msg.timestamp instanceof Date
+              ? msg.timestamp.toISOString()
+              : msg.timestamp,
+        }))
+      localStorage.setItem(
+        CHAT_STORAGE_KEY,
+        JSON.stringify(serializableMessages)
+      )
+    } catch (error) {
+      console.error("Error persisting chat history:", error)
+    }
+  }, [messages])
+
   const fetchChatStats = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/chat/stats/`)
@@ -115,6 +161,18 @@ const ChatAssistantPage = () => {
     if (!inputMessage.trim() || isTyping) return
 
     const userMessage = inputMessage.trim()
+    const historyPayload = messages
+      .filter(
+        msg =>
+          (msg.type === "user" || msg.type === "assistant") &&
+          msg.content &&
+          !msg.isStreaming
+      )
+      .slice(-12)
+      .map(msg => ({
+        role: msg.type === "user" ? "user" : "assistant",
+        content: msg.content,
+      }))
     setInputMessage("")
 
     // Add user message
@@ -150,6 +208,8 @@ const ChatAssistantPage = () => {
         credentials: "include",
         body: JSON.stringify({
           message: userMessage,
+          history: historyPayload,
+          api_provider: apiProvider,
           api_key: apiKey || undefined, // Send API key if available
         }),
       })
@@ -173,6 +233,10 @@ const ChatAssistantPage = () => {
             const updated = [...prev]
             const msgIndex = updated.findIndex(m => m.id === assistantMessageId)
             if (msgIndex !== -1) {
+              if (!updated[msgIndex].content?.trim()) {
+                updated[msgIndex].content =
+                  "I got that. Should I add this item to your cart?"
+              }
               updated[msgIndex].isStreaming = false
             }
             return updated
@@ -198,6 +262,10 @@ const ChatAssistantPage = () => {
                   m => m.id === assistantMessageId
                 )
                 if (msgIndex !== -1) {
+                  if (!updated[msgIndex].content?.trim()) {
+                    updated[msgIndex].content =
+                      "I got that. Should I add this item to your cart?"
+                  }
                   updated[msgIndex].isStreaming = false
                 }
                 return updated
@@ -217,6 +285,8 @@ const ChatAssistantPage = () => {
                     m => m.id === assistantMessageId
                   )
                   if (msgIndex !== -1) {
+                    updated[msgIndex].content =
+                      parsed.message || "Please sign in to continue."
                     updated[msgIndex].isStreaming = false
                   }
                   return updated
@@ -240,6 +310,8 @@ const ChatAssistantPage = () => {
                     m => m.id === assistantMessageId
                   )
                   if (msgIndex !== -1) {
+                    updated[msgIndex].content =
+                      "Your order is ready. Click Go to Payment when you want to checkout."
                     updated[msgIndex].isStreaming = false
                   }
                   return updated
@@ -379,13 +451,13 @@ const ChatAssistantPage = () => {
   const clearChat = () => {
     setMessages([
       {
-        id: 1,
-        type: "assistant",
-        content: "👋 Chat cleared! How can I help you today?",
+        ...DEFAULT_WELCOME_MESSAGE,
+        content: "Chat cleared! How can I help you today?",
         timestamp: new Date(),
       },
     ])
     setChatSessionCart([])
+    localStorage.removeItem(CHAT_STORAGE_KEY)
     toast.success("Chat history cleared")
   }
 
@@ -445,7 +517,11 @@ const ChatAssistantPage = () => {
                     }`}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {apiKey ? "Ready to help" : "Setup required"}
+                    {apiKey
+                      ? `Ready via ${
+                          apiProvider === "cerebras" ? "Cerebras" : "OpenRouter"
+                        }`
+                      : "Setup required"}
                   </p>
                 </div>
               </div>
@@ -479,14 +555,36 @@ const ChatAssistantPage = () => {
             <div className="px-4 sm:px-6 py-3 bg-muted/50 border-b border-border">
               <div className="flex items-center gap-2">
                 <Key className="w-4 h-4 text-muted-foreground" />
-                <span className="text-sm font-medium">OpenRouter API Key</span>
+                <span className="text-sm font-medium">AI API Key</span>
+              </div>
+              <div className="mt-3 flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={apiProvider === "openrouter" ? "default" : "outline"}
+                  onClick={() => handleApiProviderChange("openrouter")}
+                >
+                  OpenRouter
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={apiProvider === "cerebras" ? "default" : "outline"}
+                  onClick={() => handleApiProviderChange("cerebras")}
+                >
+                  Cerebras
+                </Button>
               </div>
               <div className="mt-2 flex gap-2">
                 <Input
                   type="password"
                   value={apiKey}
                   onChange={e => handleApiKeyChange(e.target.value)}
-                  placeholder="sk-or-v1-..."
+                  placeholder={
+                    apiProvider === "cerebras"
+                      ? "csk-..."
+                      : "sk-or-v1-... (optional)"
+                  }
                   className="flex-1 text-sm font-mono"
                 />
                 <Button
@@ -505,7 +603,7 @@ const ChatAssistantPage = () => {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground mt-2">
-                Get your API key from{" "}
+                Use OpenRouter or Cerebras API key. OpenRouter keys from{" "}
                 <a
                   href="https://openrouter.ai/keys"
                   target="_blank"
@@ -809,3 +907,4 @@ const ChatAssistantPage = () => {
 }
 
 export default ChatAssistantPage
+

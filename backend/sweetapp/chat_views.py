@@ -1,8 +1,8 @@
 """
-Chat Assistant Views with OpenRouter API Integration
+Chat Assistant Views with multi-provider AI integration
 Handles streaming chat responses, AI-powered intent detection, and cart management
 """
-# cSpell:ignore OPENROUTER mistralai stepfun choco Dreamcake Referer
+# cSpell:ignore OPENROUTER mistralai stepfun choco Dreamcake Referer cerebras csk
 
 import json
 import re
@@ -27,6 +27,72 @@ OPENROUTER_MODEL = "stepfun/step-3.5-flash:free"
 # Using Step-3.5 Flash (Free) for intent detection
 OPENROUTER_INTENT_MODEL = "stepfun/step-3.5-flash:free"
 
+# Cerebras API Configuration
+CEREBRAS_API_URL = "https://api.cerebras.ai/v1/chat/completions"
+CEREBRAS_MODEL = "gpt-oss-120b"
+
+
+def _read_env_key(env_var_name: str) -> str:
+    """
+    Read key from backend/.env first, then process environment variables.
+    """
+    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+    key_value = ""
+
+    if os.path.exists(env_path):
+        try:
+            with open(env_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith(f"{env_var_name}="):
+                        key_value = line.split("=", 1)[1].strip()
+                        if key_value.startswith('"') and key_value.endswith('"'):
+                            key_value = key_value[1:-1]
+                        elif key_value.startswith("'") and key_value.endswith("'"):
+                            key_value = key_value[1:-1]
+                        break
+        except Exception as e:
+            logger.error(f"Error reading {env_var_name} from .env file: {e}")
+
+    if not key_value:
+        key_value = os.environ.get(env_var_name, "")
+
+    return key_value
+
+
+def detect_api_provider(frontend_key: str = "", requested_provider: str = "") -> str:
+    """
+    Detect provider from request and/or API key prefix.
+    """
+    provider = (requested_provider or "").strip().lower()
+    if provider in {"openrouter", "cerebras"}:
+        return provider
+
+    key = (frontend_key or "").strip()
+    if key.startswith("csk-"):
+        return "cerebras"
+    return "openrouter"
+
+
+def get_provider_api_key(provider: str, frontend_key: str = None) -> str:
+    """
+    Resolve key for provider; frontend key has highest priority.
+    """
+    if frontend_key and frontend_key.strip():
+        logger.info(
+            "Using frontend-provided %s key: %s...%s",
+            provider,
+            frontend_key[:15],
+            frontend_key[-5:],
+        )
+        return frontend_key.strip()
+
+    env_var = "CEREBRAS_API_KEY" if provider == "cerebras" else "OPENROUTER_API_KEY"
+    api_key = _read_env_key(env_var)
+    if api_key:
+        logger.info(f"Using {provider} API key from {env_var}")
+    return api_key
+
 
 def get_openrouter_api_key(frontend_key: str = None):
     """
@@ -38,51 +104,7 @@ def get_openrouter_api_key(frontend_key: str = None):
     Returns:
         API key string
     """
-    # Use frontend key if provided
-    if frontend_key and frontend_key.strip():
-        logger.info(
-            f"Using frontend-provided API key: {frontend_key[:15]}...{frontend_key[-5:]}"
-        )
-        return frontend_key.strip()
-
-    # Fallback to .env file in backend directory
-    # __file__ is sweetapp/chat_views.py, go up 1 level to backend, then find .env
-    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
-
-    logger.info(f"Loading .env from: {env_path}")
-
-    # Read the key directly from the .env file to avoid cached env vars
-    api_key = ""
-    if os.path.exists(env_path):
-        try:
-            with open(env_path, "r") as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith("OPENROUTER_API_KEY="):
-                        api_key = line.split("=", 1)[1].strip()
-                        # Remove quotes if present
-                        if api_key.startswith('"') and api_key.endswith('"'):
-                            api_key = api_key[1:-1]
-                        elif api_key.startswith("'") and api_key.endswith("'"):
-                            api_key = api_key[1:-1]
-                        break
-            logger.info(
-                f"Read API key from file: {api_key[:15]}...{api_key[-5:]}"
-                if len(api_key) > 20
-                else "Key too short"
-            )
-        except Exception as e:
-            logger.error(f"Error reading .env file: {e}")
-    else:
-        logger.warning(f".env file not found at: {env_path}")
-
-    if not api_key:
-        # Fallback to environment variable
-        api_key = os.environ.get("OPENROUTER_API_KEY", "")
-        if api_key:
-            logger.info(f"Using env var API key: {api_key[:15]}...{api_key[-5:]}")
-
-    return api_key
+    return get_provider_api_key("openrouter", frontend_key)
 
 
 # Global variable to store frontend API key for current request
@@ -102,7 +124,11 @@ def get_current_api_key():
 
 
 def ai_analyze_intent(
-    message: str, available_products: list = None, api_key: str = None
+    message: str,
+    available_products: list = None,
+    conversation_history: list = None,
+    api_provider: str = "openrouter",
+    api_key: str = None,
 ) -> dict:
     """
     Use AI with Structured Outputs to intelligently analyze the user's query intent.
@@ -112,13 +138,33 @@ def ai_analyze_intent(
     Args:
         message: User's message
         available_products: List of available product names for context
+        conversation_history: Recent chat history for context
         api_key: OpenRouter API key to use
 
     Returns:
         Dictionary with intent analysis results (guaranteed schema)
     """
-    # Fast-path: skip AI call for short/simple messages (greetings, thanks, etc.)
+    # Fast-path: skip AI call for trivial greetings/thanks
+    # Do NOT fast-path messages that might contain order/product/list intents
     message_stripped = message.strip().lower()
+    action_keywords = [
+        "order",
+        "buy",
+        "add",
+        "cart",
+        "want",
+        "get",
+        "show",
+        "list",
+        "menu",
+        "checkout",
+        "pay",
+        "deliver",
+        "price",
+        "cost",
+    ]
+    has_action_intent = any(kw in message_stripped for kw in action_keywords)
+
     simple_patterns = [
         "hi",
         "hello",
@@ -132,10 +178,16 @@ def ai_analyze_intent(
         "who are you",
         "what can you do",
     ]
-    if len(message_stripped) < 30 or any(
-        p in message_stripped for p in simple_patterns
-    ):
+    is_simple = len(message_stripped) < 15 or any(
+        message_stripped == p or message_stripped == p + "!" for p in simple_patterns
+    )
+
+    if is_simple and not has_action_intent:
         logger.info("Fast-path intent detection (skipping AI call)")
+        return _fallback_intent_detection(message)
+
+    # Structured intent output is currently configured for OpenRouter.
+    if api_provider != "openrouter":
         return _fallback_intent_detection(message)
 
     # Use passed api_key or fall back to getting current key
@@ -168,9 +220,24 @@ def ai_analyze_intent(
         else "various desserts, cakes, brownies, cookies"
     )
 
+    history_lines = []
+    if conversation_history:
+        for msg in conversation_history[-6:]:
+            role = msg.get("role", "user")
+            content = (msg.get("content") or "").strip()
+            if content:
+                history_lines.append(f"{role}: {content}")
+    history_text = (
+        "\n".join(history_lines)
+        if history_lines
+        else "No previous conversation context available."
+    )
+
     intent_prompt = f"""Analyze this user message for a dessert shop chatbot and classify the intent.
 
 **Available Products:** {product_list_str}
+**Recent Conversation Context:**
+{history_text}
 
 **User Message:** "{message}"
 
@@ -297,6 +364,7 @@ Analyze the message and provide structured classification."""
 def _fallback_intent_detection(message: str) -> dict:
     """
     Fallback keyword-based intent detection when AI is unavailable.
+    Also attempts to extract a product name from the database.
 
     Args:
         message: User's message
@@ -351,17 +419,168 @@ def _fallback_intent_detection(message: str) -> dict:
     elif any(kw in message_lower for kw in faq_keywords):
         intent = "faq"
 
-    logger.info(f"Fallback Intent Detection: {intent}")
+    # Extract product name from database when intent is order
+    product_mentioned = None
+    if intent == "order":
+        try:
+            # Remove common action words to isolate the product reference
+            # Use word-boundary-aware removal to avoid corrupting product names
+            noise_words = {
+                "add",
+                "order",
+                "buy",
+                "want",
+                "get",
+                "give",
+                "me",
+                "have",
+                "to",
+                "cart",
+                "my",
+                "please",
+                "i",
+                "a",
+                "the",
+                "some",
+                "can",
+                "you",
+                "put",
+                "in",
+            }
+            words = message_lower.replace("-", " ").split()
+            stripped_words = [w for w in words if w not in noise_words and len(w) > 1]
+            normalized = " ".join(stripped_words)
+
+            best_score = 0
+            best_product = None
+
+            for product in DessertItem.objects.filter(available=True):
+                pname = product.name.lower()
+                pname_norm = pname.replace("-", " ")
+
+                # Exact full-name match in original message
+                if pname_norm in message_lower or pname in message_lower:
+                    best_product = product.name
+                    break
+
+                # Score: how many user words appear in the product name
+                user_words = [w for w in normalized.split() if len(w) > 2]
+                if not user_words:
+                    continue
+                fwd = sum(1 for w in user_words if w in pname_norm)
+                fwd_score = fwd / len(user_words)
+
+                # Reverse: product key words in user message
+                prod_words = [w for w in pname_norm.split() if len(w) > 3]
+                rev = sum(1 for w in prod_words if w in normalized)
+                rev_score = rev / len(prod_words) if prod_words else 0
+
+                combined = max(fwd_score, rev_score)
+                if combined > best_score and combined >= 0.4:
+                    best_score = combined
+                    best_product = product.name
+
+            product_mentioned = best_product
+        except Exception as e:
+            logger.error(f"Fallback product extraction error: {e}")
+
+    logger.info(f"Fallback Intent Detection: {intent}, product: {product_mentioned}")
 
     return {
         "intent": intent,
-        "confidence": "low",
-        "product_mentioned": None,
+        "confidence": "medium" if product_mentioned else "low",
+        "product_mentioned": product_mentioned,
         "quantity": 1,
         "category_filter": None,
-        "reason": "Fallback keyword-based detection",
+        "reason": "Fallback keyword-based detection with DB product matching",
         "fallback": True,
     }
+
+
+def _normalize_conversation_history(raw_history: list, limit: int = 12) -> list:
+    """
+    Normalize incoming chat history from frontend payload.
+
+    Args:
+        raw_history: Raw history array from frontend
+        limit: Number of turns to keep
+
+    Returns:
+        List of {role, content} messages for LLM context
+    """
+    if not isinstance(raw_history, list):
+        return []
+
+    normalized = []
+    for entry in raw_history[-limit:]:
+        role = str(entry.get("role", "")).strip().lower()
+        content = str(entry.get("content", "")).strip()
+        if role not in {"user", "assistant"} or not content:
+            continue
+        normalized.append({"role": role, "content": content[:1000]})
+    return normalized
+
+
+def _is_reference_message(message: str) -> bool:
+    """Detect context-dependent references (e.g., 'book that', 'add these')."""
+    text = message.lower().strip()
+    reference_patterns = [
+        "that",
+        "this",
+        "these",
+        "those",
+        "it",
+        "them",
+        "book that",
+        "add that",
+        "add this",
+        "add these",
+        "add it",
+        "yes add",
+        "yes",
+        "do it",
+    ]
+    return any(pattern in text for pattern in reference_patterns)
+
+
+def _looks_like_order_request(message: str) -> bool:
+    """Detect explicit ordering/adding intent from user text."""
+    text = message.lower().strip()
+    order_phrases = [
+        "order",
+        "book",
+        "add to cart",
+        "add this",
+        "add that",
+        "add these",
+        "add it",
+        "buy",
+        "i want",
+        "i'll take",
+        "i will take",
+        "yes add",
+        "yes, add",
+        "yes please add",
+        "place order",
+    ]
+    return any(phrase in text for phrase in order_phrases)
+
+
+def _get_chat_context(request) -> dict:
+    """Get or initialize chat context from session."""
+    chat_context = request.session.get("chat_context")
+    if not isinstance(chat_context, dict):
+        chat_context = {}
+    chat_context.setdefault("last_product", None)
+    chat_context.setdefault("last_products", [])
+    chat_context.setdefault("last_intent", None)
+    return chat_context
+
+
+def _save_chat_context(request, chat_context: dict):
+    """Persist chat context into session."""
+    request.session["chat_context"] = chat_context
+    request.session.modified = True
 
 
 def find_product_by_name(product_name: str) -> dict:
@@ -988,13 +1207,13 @@ def build_system_prompt(
 **Ordering Process:**
 - **YOU HAVE THE ABILITY TO ADD ITEMS TO THE CART.** When a user asks to order a specific product, assume the system has already added it to the cart for you.
 - If customer says they want to order but doesn't specify WHICH product (e.g., "I want to order a dessert"), ask them which specific dessert they'd like from the menu
-- If customer wants to order a SPECIFIC product and is LOGGED IN: 
+- If customer wants to order a SPECIFIC product:
   * **DO NOT say you cannot process orders.**
   * ALWAYS give a HAPPY, ENTHUSIASTIC confirmation message assuming the action succeeded.
   * Example: "Great choice! 🎉 I've added [Exact Product Name] to your cart!"
   * Then IMMEDIATELY ask: "Would you like to order more items, or shall we proceed to checkout?"
   * NEVER skip asking this question - it's mandatory after every order
-- If customer wants to order but is NOT LOGGED IN: Politely inform them they need to sign up/login first
+- Guest users can add items to cart; login may be required later at checkout
 - Always confirm the EXACT product name when adding to cart
 - Be excited and positive about their order
 - After confirming, you MUST ask if they want to order more - this is required!
@@ -1026,10 +1245,12 @@ def generate_chat_stream(
     user_authenticated: bool = False,
     username: str = None,
     faq_context: list = None,
+    conversation_history: list = None,
+    api_provider: str = "openrouter",
     api_key: str = None,
 ):
     """
-    Generate streaming response from OpenRouter API
+    Generate streaming response from selected AI provider.
 
     Args:
         message: User's message
@@ -1037,7 +1258,9 @@ def generate_chat_stream(
         user_authenticated: Whether user is logged in
         username: Username if authenticated
         faq_context: Relevant FAQ items for general queries
-        api_key: OpenRouter API key to use
+        conversation_history: Recent conversation turns
+        api_provider: Provider name (openrouter/cerebras)
+        api_key: Provider API key to use
 
     Yields:
         Server-Sent Events formatted chunks
@@ -1047,9 +1270,9 @@ def generate_chat_stream(
         context_chunks, user_authenticated, username, faq_context
     )
 
-    # Use passed api_key or fall back to getting current key
+    # Use passed api_key or fall back to provider-specific key
     if not api_key:
-        api_key = get_current_api_key()
+        api_key = get_provider_api_key(api_provider, _current_request_api_key)
 
     if api_key and len(api_key) > 20:
         logger.info(f"Streaming with API key: {api_key[:15]}...{api_key[-5:]}")
@@ -1062,20 +1285,23 @@ def generate_chat_stream(
         return
 
     # Prepare API request headers
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "http://localhost:8000",
-        "X-Title": "Sweet Dessert Chat Assistant",
-    }
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    if api_provider == "openrouter":
+        headers["HTTP-Referer"] = "http://localhost:8000"
+        headers["X-Title"] = "Sweet Dessert Chat Assistant"
 
     # Prepare request payload
+    llm_messages = [{"role": "system", "content": system_prompt}]
+    if conversation_history:
+        llm_messages.extend(conversation_history[-10:])
+    llm_messages.append({"role": "user", "content": message})
+
+    model_name = CEREBRAS_MODEL if api_provider == "cerebras" else OPENROUTER_MODEL
+    api_url = CEREBRAS_API_URL if api_provider == "cerebras" else OPENROUTER_API_URL
+
     payload = {
-        "model": OPENROUTER_MODEL,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": message},
-        ],
+        "model": model_name,
+        "messages": llm_messages,
         "stream": True,
         "temperature": 0.7,
         "max_tokens": 400,
@@ -1083,23 +1309,23 @@ def generate_chat_stream(
     }
 
     try:
-        # Make streaming request to OpenRouter
+        # Make streaming request to selected provider
         logger.info(
-            f"Making streaming request to OpenRouter with model: {OPENROUTER_MODEL}"
+            f"Making streaming request to {api_provider} with model: {model_name}"
         )
 
         content_received = False
         buffer = ""
 
         with requests.post(
-            OPENROUTER_API_URL, headers=headers, json=payload, stream=True, timeout=20
+            api_url, headers=headers, json=payload, stream=True, timeout=30
         ) as response:
             response.raise_for_status()
             # Force UTF-8 encoding to handle emojis correctly
             response.encoding = "utf-8"
-            logger.info(f"OpenRouter response status: {response.status_code}")
+            logger.info(f"{api_provider} response status: {response.status_code}")
 
-            # Use iter_content with buffer approach as per OpenRouter docs
+            # Use iter_content with SSE-style parsing
             for chunk in response.iter_content(chunk_size=512, decode_unicode=True):
                 if not chunk:
                     continue
@@ -1156,14 +1382,37 @@ def generate_chat_stream(
         yield "data: [DONE]\n\n"
 
     except requests.exceptions.Timeout:
-        logger.error("OpenRouter API request timed out")
-        yield f"data: {json.dumps({'error': 'Request timed out. Please try again.'})}\n\n"
+        logger.error("%s API request timed out", api_provider)
+        yield f"data: {json.dumps({'content': 'The AI service timed out. Please try again in a moment.'})}\n\n"
+        yield "data: [DONE]\n\n"
+    except requests.exceptions.HTTPError as e:
+        status_code = e.response.status_code if e.response is not None else None
+        logger.error("%s HTTP error (%s): %s", api_provider, status_code, e)
+
+        if status_code == 429:
+            message_text = (
+                f"{api_provider.title()} rate limit reached (429). Please wait a bit and try again, "
+                "or switch to another API key/model."
+            )
+        elif status_code in (401, 403):
+            message_text = f"{api_provider.title()} API key is invalid or unauthorized. Please update your API key in chat settings."
+        else:
+            message_text = (
+                f"AI service returned an error ({status_code}). Please try again."
+                if status_code
+                else "AI service returned an error. Please try again."
+            )
+
+        yield f"data: {json.dumps({'content': message_text})}\n\n"
+        yield "data: [DONE]\n\n"
     except requests.exceptions.RequestException as e:
-        logger.error(f"OpenRouter API request failed: {e}")
-        yield f"data: {json.dumps({'error': 'Failed to connect to AI service. Please try again.'})}\n\n"
+        logger.error("%s API request failed: %s", api_provider, e)
+        yield f"data: {json.dumps({'content': 'Failed to connect to AI service. Please check your network and try again.'})}\n\n"
+        yield "data: [DONE]\n\n"
     except Exception as e:
         logger.error(f"Unexpected error in chat generation: {e}")
-        yield f"data: {json.dumps({'error': 'An unexpected error occurred.'})}\n\n"
+        yield f"data: {json.dumps({'content': 'An unexpected error occurred while generating the response. Please try again.'})}\n\n"
+        yield "data: [DONE]\n\n"
 
 
 @csrf_exempt
@@ -1184,16 +1433,25 @@ def chat_stream(request):
         # Parse request body
         data = json.loads(request.body)
         message = data.get("message", "").strip()
+        conversation_history = _normalize_conversation_history(data.get("history", []))
         frontend_api_key = data.get("api_key", "").strip()  # Get API key from frontend
+        frontend_provider = data.get("api_provider", "").strip().lower()
+        api_provider = detect_api_provider(frontend_api_key, frontend_provider)
 
         # Set the API key for this request context
         set_request_api_key(frontend_api_key)
-        logger.info(f"Frontend API key provided: {bool(frontend_api_key)}")
+        logger.info(
+            "Frontend API key provided: %s, provider: %s",
+            bool(frontend_api_key),
+            api_provider,
+        )
 
         if not message:
             return JsonResponse({"error": "No message provided"}, status=400)
 
-        logger.info(f"Chat request: '{message[:100]}...'")
+        logger.info(
+            f"Chat request: '{message[:100]}...' (history turns: {len(conversation_history)})"
+        )
 
         # Check authentication status
         is_authenticated = request.user.is_authenticated
@@ -1201,6 +1459,14 @@ def chat_stream(request):
 
         # Get vector database instance
         vector_db = get_vector_db()
+        chat_context = _get_chat_context(request)
+        if not conversation_history:
+            chat_context = {
+                "last_product": None,
+                "last_products": [],
+                "last_intent": None,
+            }
+            _save_chat_context(request, chat_context)
 
         # Search ChromaDB for relevant context
         search_results = vector_db.search(message, n_results=5)
@@ -1208,12 +1474,18 @@ def chat_stream(request):
         logger.info(f"Found {len(search_results)} relevant products from vector search")
 
         # Get the API key to use (frontend key or env fallback)
-        current_api_key = get_openrouter_api_key(frontend_api_key)
+        current_api_key = get_provider_api_key(api_provider, frontend_api_key)
 
         # ============================================
         # AI-POWERED INTENT ANALYSIS (First Pass)
         # ============================================
-        ai_intent = ai_analyze_intent(message, search_results, api_key=current_api_key)
+        ai_intent = ai_analyze_intent(
+            message,
+            search_results,
+            conversation_history=conversation_history,
+            api_provider=api_provider,
+            api_key=current_api_key,
+        )
         intent_type = ai_intent.get("intent", "general_chat")
         intent_confidence = ai_intent.get("confidence", "low")
         product_mentioned = ai_intent.get("product_mentioned")
@@ -1237,11 +1509,49 @@ def chat_stream(request):
             if matched_product:
                 logger.info(f"Matched product: {matched_product['name']}")
 
+        # Resolve context references like "book that" / "add these to cart"
+        if (
+            intent_type in ["order", "product_info"]
+            and not matched_product
+            and _is_reference_message(message)
+        ):
+            last_product = chat_context.get("last_product")
+            if last_product:
+                matched_product = last_product
+                logger.info(
+                    "Resolved contextual reference to last product: %s",
+                    matched_product.get("name"),
+                )
+
         # Get product list if listing intent
         product_list = []
         if intent_type == "list_products":
             product_list = get_products_by_category(category_filter, limit=10)
             logger.info(f"Found {len(product_list)} products for listing")
+
+        # Force order action when message clearly asks to add/order and we resolved a product.
+        if matched_product and intent_type != "order":
+            is_order_like = _looks_like_order_request(message)
+            is_context_confirm = _is_reference_message(message) and (
+                chat_context.get("last_intent")
+                in ["order", "list_products", "product_info"]
+            )
+            if is_order_like or is_context_confirm:
+                logger.info(
+                    "Promoting intent to order for product '%s' (original intent: %s)",
+                    matched_product.get("name"),
+                    intent_type,
+                )
+                intent_type = "order"
+
+        # Keep lightweight chat context in session for pronoun follow-ups
+        if matched_product:
+            chat_context["last_product"] = matched_product
+        if product_list:
+            chat_context["last_products"] = product_list[:5]
+            chat_context["last_product"] = product_list[0]
+        chat_context["last_intent"] = intent_type
+        _save_chat_context(request, chat_context)
 
         def event_stream():
             """Generate Server-Sent Events stream"""
@@ -1295,64 +1605,64 @@ def chat_stream(request):
 
             # Handle ORDER intent - add to cart
             elif intent_type == "order" and matched_product:
-                if not is_authenticated:
-                    auth_event = {
-                        "type": "auth_required",
-                        "message": "Please sign up or login to place an order",
+                # Allow guest + authenticated users to add to cart in session.
+                if "cart" not in request.session:
+                    request.session["cart"] = []
+
+                # Check if product already in cart
+                existing = next(
+                    (
+                        p
+                        for p in request.session["cart"]
+                        if p["name"] == matched_product["name"]
+                    ),
+                    None,
+                )
+
+                if not existing:
+                    # Add quantity to product
+                    product_to_add = matched_product.copy()
+                    product_to_add["quantity"] = quantity
+
+                    request.session["cart"].append(product_to_add)
+                    request.session.modified = True
+
+                    cart_event = {
+                        "type": "cart_update",
+                        "cart": request.session["cart"],
+                        "added_products": [product_to_add],
+                        "show_confirmation": True,
                     }
-                    yield f"data: {json.dumps(auth_event)}\n\n"
-                else:
-                    # Initialize cart in session if not exists
-                    if "cart" not in request.session:
-                        request.session["cart"] = []
+                    yield f"data: {json.dumps(cart_event)}\n\n"
 
-                    # Check if product already in cart
-                    existing = next(
-                        (
-                            p
-                            for p in request.session["cart"]
-                            if p["name"] == matched_product["name"]
-                        ),
-                        None,
+                    logger.info(
+                        "Added %s (qty: %s) to cart for %s user",
+                        matched_product["name"],
+                        quantity,
+                        "authenticated" if is_authenticated else "guest",
                     )
+                else:
+                    # Product already in cart, update quantity
+                    for item in request.session["cart"]:
+                        if item["name"] == matched_product["name"]:
+                            item["quantity"] = item.get("quantity", 1) + quantity
+                            break
+                    request.session.modified = True
 
-                    if not existing:
-                        # Add quantity to product
-                        product_to_add = matched_product.copy()
-                        product_to_add["quantity"] = quantity
-
-                        request.session["cart"].append(product_to_add)
-                        request.session.modified = True
-
-                        cart_event = {
-                            "type": "cart_update",
-                            "cart": request.session["cart"],
-                            "added_products": [product_to_add],
-                            "show_confirmation": True,
-                        }
-                        yield f"data: {json.dumps(cart_event)}\n\n"
-
-                        logger.info(
-                            f"Added {matched_product['name']} (qty: {quantity}) to cart for user {username}"
-                        )
-                    else:
-                        # Product already in cart, update quantity
-                        for item in request.session["cart"]:
-                            if item["name"] == matched_product["name"]:
-                                item["quantity"] = item.get("quantity", 1) + quantity
-                                break
-                        request.session.modified = True
-
-                        cart_event = {
-                            "type": "cart_update",
-                            "cart": request.session["cart"],
-                            "added_products": [matched_product],
-                            "quantity_updated": True,
-                        }
-                        yield f"data: {json.dumps(cart_event)}\n\n"
-                        logger.info(
-                            f"Updated quantity for {matched_product['name']} in cart"
-                        )
+                    updated_product = matched_product.copy()
+                    updated_product["quantity"] = quantity
+                    cart_event = {
+                        "type": "cart_update",
+                        "cart": request.session["cart"],
+                        "added_products": [updated_product],
+                        "quantity_updated": True,
+                    }
+                    yield f"data: {json.dumps(cart_event)}\n\n"
+                    logger.info(
+                        "Updated quantity for %s in cart for %s user",
+                        matched_product["name"],
+                        "authenticated" if is_authenticated else "guest",
+                    )
 
             # Handle PRODUCT_INFO intent
             elif intent_type == "product_info" and matched_product:
@@ -1367,13 +1677,15 @@ def chat_stream(request):
             # ============================================
             try:
                 # Get the API key to use (frontend key or env fallback)
-                current_api_key = get_openrouter_api_key(frontend_api_key)
+                current_api_key = get_provider_api_key(api_provider, frontend_api_key)
                 for chunk in generate_chat_stream(
                     message,
                     search_results,
                     is_authenticated,
                     username,
                     faq_context,
+                    conversation_history=conversation_history,
+                    api_provider=api_provider,
                     api_key=current_api_key,
                 ):
                     yield chunk
@@ -1487,7 +1799,10 @@ def chat_stats(request):
             {
                 "success": True,
                 "stats": stats,
-                "api_configured": bool(get_openrouter_api_key()),
+                "api_configured": bool(
+                    get_provider_api_key("openrouter")
+                    or get_provider_api_key("cerebras")
+                ),
             }
         )
     except Exception as e:

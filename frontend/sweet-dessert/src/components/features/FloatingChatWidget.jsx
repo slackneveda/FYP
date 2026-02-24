@@ -45,6 +45,18 @@ const FloatingChatWidget = () => {
     if (!inputMessage.trim() || isTyping) return;
 
     const userMessage = inputMessage.trim();
+    const historyPayload = messages
+      .filter(
+        msg =>
+          (msg.type === 'user' || msg.type === 'assistant') &&
+          msg.content &&
+          !msg.isStreaming
+      )
+      .slice(-12)
+      .map(msg => ({
+        role: msg.type === 'user' ? 'user' : 'assistant',
+        content: msg.content,
+      }));
     setInputMessage('');
 
     const userMessageObj = {
@@ -70,6 +82,7 @@ const FloatingChatWidget = () => {
 
     try {
       const apiKey = localStorage.getItem('openrouter_api_key') || undefined;
+      const apiProvider = localStorage.getItem('chat_api_provider') || 'openrouter';
 
       const response = await fetch(`${API_BASE_URL}/chat/stream/`, {
         method: 'POST',
@@ -77,6 +90,8 @@ const FloatingChatWidget = () => {
         credentials: 'include',
         body: JSON.stringify({
           message: userMessage,
+          history: historyPayload,
+          api_provider: apiProvider,
           api_key: apiKey,
         }),
       });
@@ -96,7 +111,12 @@ const FloatingChatWidget = () => {
           setMessages(prev => {
             const updated = [...prev];
             const idx = updated.findIndex(m => m.id === assistantMessageId);
-            if (idx !== -1) updated[idx].isStreaming = false;
+            if (idx !== -1) {
+              if (!updated[idx].content?.trim()) {
+                updated[idx].content = 'I got that. Should I add this item to your cart?';
+              }
+              updated[idx].isStreaming = false;
+            }
             return updated;
           });
           if (!isOpen) setHasUnread(true);
@@ -116,7 +136,12 @@ const FloatingChatWidget = () => {
             setMessages(prev => {
               const updated = [...prev];
               const idx = updated.findIndex(m => m.id === assistantMessageId);
-              if (idx !== -1) updated[idx].isStreaming = false;
+              if (idx !== -1) {
+                if (!updated[idx].content?.trim()) {
+                  updated[idx].content = 'I got that. Should I add this item to your cart?';
+                }
+                updated[idx].isStreaming = false;
+              }
               return updated;
             });
             if (!isOpen) setHasUnread(true);
