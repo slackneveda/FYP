@@ -51,24 +51,24 @@ const Header = () => {
           </Link>
 
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center space-x-4">
-            {navigation.map((item) => (
-              <ShimmerButton
-                key={item.name}
-                asChild
-                variant={isActive(item.href) ? 'chocolate' : 'caramel'}
-                size="sm"
-                className={`${
-                  isActive(item.href)
-                    ? 'transform scale-105'
-                    : ''
-                }`}
-              >
-                <Link to={item.href}>
+          <nav className="hidden md:flex items-center space-x-6 lg:space-x-8">
+            {navigation.map((item) => {
+              const active = isActive(item.href);
+              return (
+                <Link 
+                  key={item.name}
+                  to={item.href}
+                  className={`relative text-sm font-medium transition-colors hover:text-primary ${
+                    active ? 'text-primary' : 'text-foreground/80 '
+                  }`}
+                >
                   {item.name}
+                  {active && (
+                    <span className="absolute -bottom-1.5 left-0 w-full h-[2px] bg-primary rounded-full" />
+                  )}
                 </Link>
-              </ShimmerButton>
-            ))}
+              );
+            })}
           </nav>
 
 
@@ -124,28 +124,28 @@ const Header = () => {
               </div>
             ) : (
               <div className="flex items-center space-x-3">
-                <ShimmerButton asChild variant="caramel" size="default" className="hidden sm:flex items-center justify-center px-6">
-                  <Link to="/signin" className="flex items-center justify-center">
+                <Link to="/signin" className="hidden sm:block">
+                  <ShimmerButton variant="caramel" size="default" className="flex items-center justify-center px-6">
                     <LogIn className="h-4 w-4 mr-2" />
                     Sign In
-                  </Link>
-                </ShimmerButton>
-                <ShimmerButton asChild variant="caramel" size="sm" className="sm:hidden h-9 w-9">
-                  <Link to="/signin" className="flex items-center justify-center">
+                  </ShimmerButton>
+                </Link>
+                <Link to="/signin" className="sm:hidden">
+                  <ShimmerButton variant="caramel" size="sm" className="h-9 w-9 p-0 flex items-center justify-center">
                     <LogIn className="h-4 w-4" />
-                  </Link>
-                </ShimmerButton>
-                <ShimmerButton asChild variant="chocolate" size="default" className="hidden sm:flex items-center justify-center px-6">
-                  <Link to="/signup" className="flex items-center justify-center">
+                  </ShimmerButton>
+                </Link>
+                <Link to="/signup" className="hidden sm:block">
+                  <ShimmerButton variant="chocolate" size="default" className="flex items-center justify-center px-6">
                     <UserPlus className="h-4 w-4 mr-2" />
                     Sign Up
-                  </Link>
-                </ShimmerButton>
-                <ShimmerButton asChild variant="chocolate" size="sm" className="sm:hidden h-9 w-9">
-                  <Link to="/signup" className="flex items-center justify-center">
+                  </ShimmerButton>
+                </Link>
+                <Link to="/signup" className="sm:hidden">
+                  <ShimmerButton variant="chocolate" size="sm" className="h-9 w-9 p-0 flex items-center justify-center">
                     <UserPlus className="h-4 w-4" />
-                  </Link>
-                </ShimmerButton>
+                  </ShimmerButton>
+                </Link>
               </div>
             )}
 
@@ -172,22 +172,25 @@ const Header = () => {
 
               
               {/* Mobile Navigation Links */}
-              <nav className="space-y-2">
-                {navigation.map((item) => (
-                  <ShimmerButton
-                    key={item.name}
-                    asChild
-                    variant={isActive(item.href) ? 'chocolate' : 'strawberry'}
-                    className="w-full justify-start"
-                  >
+              <nav className="flex flex-col space-y-4">
+                {navigation.map((item) => {
+                  const active = isActive(item.href);
+                  return (
                     <Link
+                      key={item.name}
                       to={item.href}
                       onClick={() => setIsMobileMenuOpen(false)}
+                      className={`text-lg font-medium transition-colors ${
+                        active ? 'text-primary' : 'text-foreground/80 hover:text-primary'
+                      }`}
                     >
                       {item.name}
+                      {active && (
+                         <div className="h-0.5 w-8 bg-primary mt-1 rounded-full" />
+                      )}
                     </Link>
-                  </ShimmerButton>
-                ))}
+                  );
+                })}
               </nav>
 
               {/* Mobile Authentication */}
@@ -211,18 +214,18 @@ const Header = () => {
                   </>
                 ) : (
                   <>
-                    <ShimmerButton asChild variant="caramel" className="w-full justify-center py-3">
-                      <Link to="/signin" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center justify-center">
+                    <Link to="/signin" onClick={() => setIsMobileMenuOpen(false)} className="block w-full">
+                      <ShimmerButton variant="caramel" className="w-full flex items-center justify-center py-3">
                         <LogIn className="h-4 w-4 mr-2" />
                         Sign In
-                      </Link>
-                    </ShimmerButton>
-                    <ShimmerButton asChild variant="chocolate" className="w-full justify-center py-3">
-                      <Link to="/signup" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center justify-center">
+                      </ShimmerButton>
+                    </Link>
+                    <Link to="/signup" onClick={() => setIsMobileMenuOpen(false)} className="block w-full mt-2">
+                      <ShimmerButton variant="chocolate" className="w-full flex items-center justify-center py-3">
                         <UserPlus className="h-4 w-4 mr-2" />
                         Sign Up
-                      </Link>
-                    </ShimmerButton>
+                      </ShimmerButton>
+                    </Link>
                   </>
                 )}
               </div>
