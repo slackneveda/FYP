@@ -29,7 +29,7 @@ OPENROUTER_INTENT_MODEL = "stepfun/step-3.5-flash:free"
 
 # Cerebras API Configuration
 CEREBRAS_API_URL = "https://api.cerebras.ai/v1/chat/completions"
-CEREBRAS_MODEL = "gpt-oss-120b"
+CEREBRAS_MODEL = "qwen-3-235b-a22b-instruct-2507"
 
 
 def _read_env_key(env_var_name: str) -> str:

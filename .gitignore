@@ -41,6 +41,7 @@ chroma_db/
 # OS
 Thumbs.db
 Desktop.ini
+nul
 
 # Project specific
 *.pdf
