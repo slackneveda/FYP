@@ -22,8 +22,6 @@ db.sqlite3-journal
 media/
 
 # Environment Variables
-.env
-.env.local
 .env.*.local
 
 # ChromaDB
@@ -41,6 +39,7 @@ chroma_db/
 # OS
 Thumbs.db
 Desktop.ini
+nul
 
 # Project specific
 *.pdf
@@ -54,3 +53,4 @@ node_modules/
 *.temp
 *.bak
 *.cache
+config.bat
