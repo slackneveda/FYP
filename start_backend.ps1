@@ -27,7 +27,7 @@ if (Test-Path $ActivateScript) {
 
 # Install required packages
 Write-Host "Installing required packages..." -ForegroundColor Green
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 
 # Run database migrations
 Write-Host "Running database migrations..." -ForegroundColor Green
